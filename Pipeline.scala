@@ -1,4 +1,4 @@
-package edu.berkeley.cs.amplab.scatk
+package edu.berkeley.cs.amplab.pipedream
 
 import scala.collection.JavaConversions._
 import scala.collection.mutable
@@ -11,8 +11,12 @@ import java.io.File
 import java.util.ArrayList
 
 import net.sf.samtools.{SAMRecord, BAMRecord}
-import org.apache.hadoop.io.LongWritable
+
+import net.sf.picard.reference.IndexedFastaSequenceFile
+
 import fi.tkk.ics.hadoop.bam.SAMRecordWritable
+
+import org.apache.hadoop.io.LongWritable
 
 import org.broadinstitute.sting.utils.GenomeLocParser
 import org.broadinstitute.sting.utils.SampleUtils
@@ -20,18 +24,23 @@ import org.broadinstitute.sting.utils.sam.GATKSAMRecord;
 import org.broadinstitute.sting.gatk.contexts.AlignmentContext;
 import org.broadinstitute.sting.gatk.iterators.LocusIteratorByState
 import org.broadinstitute.sting.gatk.ReadProperties
-import org.broadinstitute.sting.gatk.datasources.reference.ReferenceDataSource;
-import org.broadinstitute.sting.gatk.filters.{UnmappedReadFilter, BadCigarFilter};
-import org.broadinstitute.sting.gatk.examples.GATKPaperGenotyper;
+import org.broadinstitute.sting.gatk.datasources.reference.ReferenceDataSource
+import org.broadinstitute.sting.gatk.filters.{UnmappedReadFilter, BadCigarFilter}
+import org.broadinstitute.sting.gatk.examples.GATKPaperGenotyper
 
 object Pipeline {
     var bglp:Broadcast[GenomeLocParser] = null;
+    var bhg19:Broadcast[IndexedFastaSequenceFile] = null;
     def main(args: Array[String]) {
+        System.setProperty("spark.serializer", "spark.KryoSerializer")
+        System.setProperty("spark.kryo.registrator", "edu.berkeley.cs.amplab.pipedream.Registrator")
         val sc = new SparkContext(args(0), "SparkContext");
+
         // Create a shared reference and copy to nodes
         val hg19 = new File("/data/gatk_bundle/hg19/ucsc.hg19.fasta");
-        val referenceDataSource = new ReferenceDataSource(hg19);
-        val genomeLocParser = new GenomeLocParser(referenceDataSource.getReference());
+        val rds = new ReferenceDataSource(hg19);
+        val genomeLocParser = new GenomeLocParser(rds.getReference());
+        bhg19 = sc.broadcast(new CachedReference(hg19))
         bglp = sc.broadcast(genomeLocParser)
 
         val rdd = ShortReadRDD.fromBam("data/chrM.bam", sc);
@@ -44,37 +53,18 @@ object Pipeline {
         // val calls = litePileups.map(simpleSNPCaller).collect()
     }
         
-    def simpleSNPCaller(pileup: LightweightPileup): String = {
-        val bases = pileup.bases
-        val quals = pileup.quals;
-        val baseMap = mutable.Map('A' -> 0, 'C' -> 0, 'G' -> 0, 'T' -> 0);
-        for (b <- bases.filter(baseMap.contains(_)))
-            baseMap(b) += 1;
-        val topTwo = baseMap.toList.sortWith((a,b) => a._2 > b._2);
-        val k = topTwo(0)._2 + topTwo(1)._2
-        if (topTwo(0)._2 / k >= .85)
-            topTwo(0)._1.toString
-        else if (topTwo(1)._2 / k >= .85)
-            topTwo(1)._1.toString
-        else
-            topTwo(0)._1.toString + "/" + topTwo(1)._1.toString
-    }
-
-    // def samToGATK = (read: SAMRecord) => new GATKSAMRecord(read);
-    // def samToGATK(read: SAMRecord): GATKSAMRecord = {
-    //    val sr = new GATKSAMRecord(read);
-    //    sr.setCigar(read.getCigar());
-    //    sr.setReadBases(read.getReadBases()); 
-    //    return sr;
-    // }
-
     def readsToPileup(reads: Iterator[(LongWritable, SAMRecordWritable)],
-                      genomeLocParser: Broadcast[GenomeLocParser]): LocusIteratorByState = {
+                      genomeLocParser: Broadcast[GenomeLocParser],
+                      reference: Broadcast[IndexedFastaSequenceFile]): LocusIteratorByState = {
         // Minimal ReadProperties object needed to satisfy the locus iterator
         val readInfo = new ReadProperties(null, null, null, true, null, null, null, null, null, true, 1);
         val unmappedFilter = new UnmappedReadFilter;
         val badCigarFilter = new BadCigarFilter;
-        val mappedReads = reads.map(r => r._2.get()).filterNot(unmappedFilter.filterOut).filterNot(badCigarFilter.filterOut);
-        new LocusIteratorByState(mappedReads, readInfo, genomeLocParser.value, Set("NA12878", "NA12877", "NA12882"));
+        val mappedReads = reads.map(r => r._2.get()).filterNot(r =>
+            unmappedFilter.filterOut(r) || badCigarFilter.filterOut(r)
+        );
+        val locusIter = LocusIteratorByState(mappedReads, readInfo, genomeLocParser.value, Set("NA12878", "NA12877", "NA12882"));
+        val ref = reference.value
+        for (ctx <- locusIter) yield LightweightPilepFactory(ctx, ref)
     }
 }
