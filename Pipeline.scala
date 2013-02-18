@@ -30,7 +30,7 @@ import org.broadinstitute.sting.gatk.examples.GATKPaperGenotyper
 
 object Pipeline {
     var bglp:Broadcast[GenomeLocParser] = null;
-    var bhg19:Broadcast[IndexedFastaSequenceFile] = null;
+    var bhg19:Broadcast[CachedReference] = null;
     def main(args: Array[String]) {
         System.setProperty("spark.serializer", "spark.KryoSerializer")
         System.setProperty("spark.kryo.registrator", "edu.berkeley.cs.amplab.pipedream.Registrator")
@@ -44,9 +44,8 @@ object Pipeline {
         bglp = sc.broadcast(genomeLocParser)
 
         val rdd = ShortReadRDD.fromBam("data/chrM.bam", sc);
-        val pileups = rdd.mapPartitions((p) => readsToPileup(p, bglp))
-        val litePileups = pileups.map(ctx => LightweightPileupFactory.create(ctx)).cache()
-        val totalBases = litePileups.map(lpu => lpu.bases.length).sum
+        val pileups = rdd.mapPartitions((p) => readsToPileup(p, bglp, bhg19)).cache()
+        val totalBases = pileups.map(lpu => lpu.bases.length).sum
         println(totalBases)
         
         // Call us some SNPs!
@@ -55,7 +54,7 @@ object Pipeline {
         
     def readsToPileup(reads: Iterator[(LongWritable, SAMRecordWritable)],
                       genomeLocParser: Broadcast[GenomeLocParser],
-                      reference: Broadcast[IndexedFastaSequenceFile]): LocusIteratorByState = {
+                      reference: Broadcast[CachedReference]): Iterator[LightweightPileup] = {
         // Minimal ReadProperties object needed to satisfy the locus iterator
         val readInfo = new ReadProperties(null, null, null, true, null, null, null, null, null, true, 1);
         val unmappedFilter = new UnmappedReadFilter;
@@ -63,8 +62,8 @@ object Pipeline {
         val mappedReads = reads.map(r => r._2.get()).filterNot(r =>
             unmappedFilter.filterOut(r) || badCigarFilter.filterOut(r)
         );
-        val locusIter = LocusIteratorByState(mappedReads, readInfo, genomeLocParser.value, Set("NA12878", "NA12877", "NA12882"));
-        val ref = reference.value
-        for (ctx <- locusIter) yield LightweightPilepFactory(ctx, ref)
+        val locusIter = new LocusIteratorByState(mappedReads, readInfo, 
+            genomeLocParser.value, Set("NA12878", "NA12877", "NA12882"));
+        for (ctx <- locusIter.iterator) yield LightweightPileupFactory.create(ctx, reference.value)
     }
 }

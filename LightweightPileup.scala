@@ -28,9 +28,9 @@ class LightweightPileup(val contig:String, val position:Long,
 object LightweightPileupFactory {
     def create(context: AlignmentContext, ref: CachedReference): LightweightPileup = {
         val pileup = context.getBasePileup.getPileupWithoutMappingQualityZeroReads;
-        val n = bases.length
         val bases = pileup.getBases.map(_.toChar)
         val quals = pileup.getQuals.map(_.toChar)
+        val n = bases.length
         val contig = context.getContig
         val pos = context.getPosition
         val refBase = ref.getBase(contig, pos)
