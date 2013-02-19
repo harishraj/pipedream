@@ -19,11 +19,10 @@ class BQSRCovariate(val matchesRef: Boolean,
     }
 }
 
-class BaseQualityRecalibrator(val sc: SparkContext, 
-    val readsRDD: ShortReadRDD, val ref: Broadcast[CachedReference]) {
+class BaseQualityRecalibrator(val sc: SparkContext, val ref: Broadcast[CachedReference]) { 
     var dbSNPSites: Set[(String, Long)] = null;
 
-    def execute() {
+    def execute(readsRDD: Iterator[SAMRecord]) {
         dbSNPSites = getSegregatingSites
         val covariates = readsRDD.map(computeCovariates).reduce(_ ++ _)
     }
@@ -39,11 +38,12 @@ class BaseQualityRecalibrator(val sc: SparkContext,
             val quals = read.getBaseQualities.map(_.toChar).slice(readStart, readStart + blen)
             var cycle = (readStart to readStart + blen - 1).toList
             // X means: ignore
-            var dinuc = List('X') ++ read.getReadBases.map(_.toChar).slice(readStart - 1, readStart + blen)
+            var dinuc = read.getReadBases.map(_.toChar).toList.slice(readStart - 1, readStart + blen)
             if (read.getReadNegativeStrandFlag) {
                 cycle = cycle.reverse
                 dinuc = dinuc.reverse
             }
+            dinuc.+:('X')
             val refRead = refBases.zip(readBases)
             val covs = (quals, cycle, dinuc).zipped.toList
             refRead.zip(covs).withFilter {

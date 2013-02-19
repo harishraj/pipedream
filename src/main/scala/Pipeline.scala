@@ -54,7 +54,7 @@ object Pipeline {
 
         // Step 1
         // Recalibrate base scores
-        val bqsr = new BaseQualityRecalibrator(sc, rdd, bhg19)
+        val bqsr = new BaseQualityRecalibrator(sc, bhg19)
         val repl = new ILoop
         repl.settings = new Settings
         repl.in = SimpleReader()
@@ -68,7 +68,7 @@ object Pipeline {
         repl.intp.bind("bqsr", "edu.berkeley.cs.amplab.pipedream.BaseQualityRecalibrator", bqsr)
         repl.loop()
         repl.closeInterpreter()
-        bqsr.execute
+        // bqsr.execute
         
         // Call us some SNPs!
         // val calls = litePileups.map(simpleSNPCaller).collect()

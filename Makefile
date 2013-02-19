@@ -5,3 +5,7 @@ run:
 
 pkg:
 	$(SPARK_HOME)/sbt/sbt package
+
+test:
+	$(SPARK_HOME)/sbt/sbt test
+
