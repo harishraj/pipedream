@@ -33,7 +33,7 @@ object LightweightPileupFactory {
         val n = bases.length
         val contig = context.getContig
         val pos = context.getPosition
-        val refBase = ref.getBase(contig, pos)
+        val refBase = ref.getBase(contig, pos.toInt)
         val bq = bases.zip(quals).filter(x => x._1 != refBase).unzip
         new LightweightPileup(context.getContig, context.getPosition, refBase,
             n - bq._1.length, bq._1.toArray, bq._2.toArray);
