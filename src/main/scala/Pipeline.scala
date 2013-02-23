@@ -35,6 +35,7 @@ import ShortReadRDDUtils._
 object Pipeline {
     var bglp:Broadcast[GenomeLocParser] = null;
     var bhg19:Broadcast[CachedReference] = null;
+
     def main(args: Array[String]) {
         System.setProperty("spark.serializer", "spark.KryoSerializer")
         System.setProperty("spark.kryo.registrator", "edu.berkeley.cs.amplab.pipedream.Registrator")
@@ -47,28 +48,17 @@ object Pipeline {
         bhg19 = sc.broadcast(new CachedReference(hg19))
         bglp = sc.broadcast(genomeLocParser)
 
-        val rdd = shortReadRDDfromBam("data/chrM.bam", sc);
+        val rdd = shortReadRDDfromBam("data/chrM.bam", sc).cache()
         // val pileups = rdd.mapPartitions(p => readsToPileup(p, bglp, bhg19)).cache()
         // val totalBases = pileups.map(lpu => lpu.bases.length).sum
         // println(totalBases)
 
+        val covs = rdd.map(BQSRFunctions.computeCovariates(_, bhg19)).collect()
+
         // Step 1
         // Recalibrate base scores
-        val bqsr = new BaseQualityRecalibrator(sc, bhg19)
-        val repl = new ILoop
-        repl.settings = new Settings
-        repl.in = SimpleReader()
-
-        // set the "-Yrepl-sync" option
-        repl.settings.Yreplsync.value = true
-
-        // start the interpreter and then close it after you :quit
-        repl.createInterpreter()
-        repl.intp.bind("rdd", "edu.berkeley.cs.amplab.pipedream.ShortReadRDDUtils.ShortReadRDD", rdd)
-        repl.intp.bind("bqsr", "edu.berkeley.cs.amplab.pipedream.BaseQualityRecalibrator", bqsr)
-        repl.loop()
-        repl.closeInterpreter()
-        // bqsr.execute
+        // val bqsr = new BaseQualityRecalibrator(sc, bhg19)
+        // bqsr.execute(rdd)
         
         // Call us some SNPs!
         // val calls = litePileups.map(simpleSNPCaller).collect()

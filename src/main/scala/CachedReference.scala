@@ -14,12 +14,12 @@ class CachedReference(val f: File) extends IndexedFastaSequenceFile(f) {
         contigs(contig)
     }
     // Accepts 1-based coordinates
-    def getBase(contig: String, pos: Int): Char = {
+    def getBase(contig: String, pos: Int): Byte = {
         getBases(contig, pos, 1)(0)
     }
     // Accepts 1-based coordinates
-    def getBases(contig: String, start: Int, length: Int): Array[Char] = {
-        getSequence(contig).getBases().slice(start - 1, start + length - 1).map(_.toChar)
+    def getBases(contig: String, start: Int, length: Int): Array[Byte] = {
+        getSequence(contig).getBases().slice(start - 1, start + length - 1)
     }
     def getBasesForRead(read: SAMRecord) {
         getBases(read.getReferenceName, read.getUnclippedStart - 1, read.getReadLength)

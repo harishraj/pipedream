@@ -4,11 +4,11 @@ import org.broadinstitute.sting.gatk.contexts.AlignmentContext;
 import net.sf.picard.reference.{IndexedFastaSequenceFile, ReferenceSequence}
 
 class LightweightPileup(val contig:String, val position:Long,
-    val refBase:Char, val refMatch:Int, val bases:Array[Char], 
-    val quals:Array[Char]) {
+    val refBase:Byte, val refMatch:Int, val bases:Array[Byte], 
+    val quals:Array[Byte]) {
 
     def possibleGenotype(): String = {
-        val baseMap = collection.mutable.Map('A' -> 0, 'C' -> 0, 'G' -> 0, 'T' -> 0);
+        val baseMap = collection.mutable.Map() ++ "ACTG".map(x => x.toByte -> 0)
         baseMap(refBase) = refMatch
         for (b <- bases.filter(baseMap.contains(_)))
             baseMap(b) += 1;
@@ -28,8 +28,8 @@ class LightweightPileup(val contig:String, val position:Long,
 object LightweightPileupFactory {
     def create(context: AlignmentContext, ref: CachedReference): LightweightPileup = {
         val pileup = context.getBasePileup.getPileupWithoutMappingQualityZeroReads;
-        val bases = pileup.getBases.map(_.toChar)
-        val quals = pileup.getQuals.map(_.toChar)
+        val bases = pileup.getBases
+        val quals = pileup.getQuals
         val n = bases.length
         val contig = context.getContig
         val pos = context.getPosition
