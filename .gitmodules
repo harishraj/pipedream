@@ -1,0 +1,6 @@
+[submodule "vendor/scala-kryo-serialization"]
+	path = vendor/scala-kryo-serialization
+	url = https://github.com/romix/scala-kryo-serialization
+[submodule "vendor/gatk"]
+	path = vendor/gatk
+	url = https://github.com/broadgsa/gatk
