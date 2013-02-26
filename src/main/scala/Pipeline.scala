@@ -8,6 +8,7 @@ import scala.tools.nsc.Settings
 import spark._
 import SparkContext._
 import spark.broadcast.Broadcast
+import spark.util.Vector
 
 import java.io.File
 import java.util.ArrayList
@@ -48,12 +49,14 @@ object Pipeline {
         bhg19 = sc.broadcast(new CachedReference(hg19))
         bglp = sc.broadcast(genomeLocParser)
 
-        val rdd = shortReadRDDfromBam("data/chrM.bam", sc).cache()
+        val rdd = shortReadRDDfromBam("/hadoop/3/platinum_genomes/merged.bam", sc)
         // val pileups = rdd.mapPartitions(p => readsToPileup(p, bglp, bhg19)).cache()
         // val totalBases = pileups.map(lpu => lpu.bases.length).sum
         // println(totalBases)
 
-        val covs = rdd.map(BQSRFunctions.computeCovariates(_, bhg19)).collect()
+        val weightedCovs = rdd.flatMap(BaseQualityRecalibrator.computeCovariates(_, bhg19)).countByValue()
+        val pErr = BaseQualityRecalibrator.computeProbErr(weightedCov)
+        println(pErr)
 
         // Step 1
         // Recalibrate base scores

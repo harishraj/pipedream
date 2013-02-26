@@ -25,42 +25,58 @@ class BQSRCovariate(val matchesRef: Boolean, val qual: Byte, val cycle: Int,
         for (b1 <- bases; b2 <- bases) yield (dinuc == Array(b1,b2)):Int
     }    
 
-    def toIndexedSeq: (Int, Vector) = {
+    def toData: (Int, Vector) = {
         val y = if (matchesRef) 1 else 0
         val x = List(qual.toInt, cycle) ++ dinucToIndicator
         (2*y - 1, new Vector(x.map(_.toDouble).toArray))
     }
 }
 
-trait BQSRUtil {
-    def min(a: Int, b: Int) = List(a, b).min
-    def max(a: Int, b: Int) = List(a, b).max
-}
+package object BaseQualityScoreRecalibrator {
+    // (Observed quality, Cycle, Base, Prev. Base)
+    type BQSRCovariate = (Byte, Int, Byte, Byte)
+    type BQSRObservations = Seq[(Boolean, BQSRCovariate)]
+    type ErrorTable = Map[BQSRCovariate, Double]
 
-package object BQSRFunctions {
-    def computeCovariates(read: SAMRecord, ref: Broadcast[CachedReference]): List[BQSRCovariate] = {
-        val contig = read.getReferenceName
-            val n = read.getReadLength
-            val bases = read.getReadBases
-            val quals = read.getBaseQualities
-            read.getAlignmentBlocks.toList.flatMap{block => 
-                val blen = block.getLength
-                val readStart = block.getReadStart - 1
-                val ind = readStart until (readStart + blen)
-                val cycle = if (read.getReadNegativeStrandFlag)
-                    ind.map(n - 1 - _)
-                else
-                    ind
-                val a = if (read.getReadNegativeStrandFlag)
-                    1
-                else
-                    -1
-                val refBases = ref.value.getBases(contig, block.getReferenceStart, blen)
-                cycle.zip(ind).filter(c => c._1 >= 1).map(c =>
-                    new BQSRCovariate(bases(c._2) == refBases(c._2 - readStart),
-                                quals(c._2), c._1, Array(bases(c._2),bases(c._2 + a)))
-                )
+    private def getDefault(m: Map[K,V], key: K, default: V): V = {
+        if (m.contains(key)) m(key) else default
+    }
+
+    def computeProbErr(counts: Map[(Boolean, BQSRObservations), Int]): ErrorTable = {
+        counts.keys.map(_._2).toSet.map {
+            k =>
+                def gdc(b: Boolean): Int = { getDefaultCounts(count, (b, key), 0) }
+                gdc(false) / (gdc(true) + gdc(false))
         }
+    }
+
+    def computeCovariates(read: SAMRecord, ref: Broadcast[CachedReference]): BQSRObservations = {
+        val contig = read.getReferenceName
+        val n = read.getReadLength
+        val bases = read.getReadBases
+        val quals = read.getBaseQualities
+        read.getAlignmentBlocks.toList.flatMap{block => 
+            val blen = block.getLength
+            val readStart = block.getReadStart - 1
+            val ind = readStart until (readStart + blen)
+            val cycle = if (read.getReadNegativeStrandFlag)
+                ind.map(n - 1 - _)
+            else
+                ind
+            val a = if (read.getReadNegativeStrandFlag)
+                1
+            else
+                -1
+            val refBases = ref.value.getBases(contig, block.getReferenceStart, blen)
+            cycle.zip(ind).filter(c => c._1 >= 1).map(
+                c => (bases(c._2) == refBases(c._2 - readStart),
+                        quals(c._2), c._1, bases(c._2), bases(c._2 + a))
+            )
+        }
+    }
+    // "Destructively" recalibrate the reads
+    def recalibrateRead(read: SAMRecord, errorTable: ErrorTable) { 
+
     }
 }
 
@@ -69,19 +85,9 @@ class BaseQualityRecalibrator(val sc: SparkContext, val ref: Broadcast[CachedRef
 
     def execute(rdd: ShortReadRDD) {
         // val dbSNPSites: BroadCast[Set[(String, Long)]] = sc.broadcast(getSegregatingSites)
-        val covariates = rdd.map(BQSRFunctions.computeCovariates(_, ref)).reduce(_ ++ _).map(_.toIndexedSeq)
+        val covariates = rdd.map(BQSRFunctions.computeCovariates(_, ref)).reduce(_ ++ _)
         var w = Vector(18, _ => Random.nextDouble)
-        for (i <- 1 to ITERATIONS) {
-            println("On iteration " + i)
-                val gradient = covariates.map { p =>
-                    (1 / (1 + exp(-p._1 * (w dot p._2))) - 1) * p._1 * p._2
-            }.reduce(_ + _)
-            w -= gradient
-            println("|grad| = ", sqrt(gradient dot gradient))
-        }
-    
     }
-
     // Return set of all segregating sites in dbSNP
     def getSegregatingSites(): Set[(String, Long)] = {
         val dbSNP = sc.textFile("/data/gatk_bundle/hg19/dbsnp_137.hg19.vcf")
