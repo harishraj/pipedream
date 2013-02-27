@@ -2,8 +2,6 @@ package edu.berkeley.cs.amplab.pipedream
 
 import scala.collection.JavaConversions._
 import scala.collection.mutable
-import scala.tools.nsc.interpreter.{ILoop, SimpleReader}
-import scala.tools.nsc.Settings
 
 import spark._
 import SparkContext._
@@ -43,20 +41,21 @@ object Pipeline {
         val sc = new SparkContext(args(0), "SparkContext");
 
         // Create a shared reference and copy to nodes
-        val hg19 = new File("/data/gatk_bundle/hg19/ucsc.hg19.fasta");
+        val hg19 = new File(args(2));
         val rds = new ReferenceDataSource(hg19);
         val genomeLocParser = new GenomeLocParser(rds.getReference());
         bhg19 = sc.broadcast(new CachedReference(hg19))
         bglp = sc.broadcast(genomeLocParser)
 
-        val rdd = shortReadRDDfromBam("/hadoop/3/platinum_genomes/merged.bam", sc)
+        val rdd = shortReadRDDfromBam(args(1), sc)
         // val pileups = rdd.mapPartitions(p => readsToPileup(p, bglp, bhg19)).cache()
         // val totalBases = pileups.map(lpu => lpu.bases.length).sum
         // println(totalBases)
 
-        val weightedCovs = rdd.flatMap(BaseQualityRecalibrator.computeCovariates(_, bhg19)).countByValue()
-        val pErr = BaseQualityRecalibrator.computeProbErr(weightedCov)
-        println(pErr)
+        val counts = rdd.flatMap(BaseQualityScoreRecalibrator.computeCovariates(_, bhg19)).countByValue().toMap
+        val pErr = BaseQualityScoreRecalibrator.computeProbErr(counts)
+        pErr.toList.map { case ((qual,cycle,base,dinuc),prob) => 
+		println("%d\t%d\t%c%c".format(qual, cycle, base, dinuc)) }
 
         // Step 1
         // Recalibrate base scores

@@ -4,3 +4,9 @@
 [submodule "vendor/gatk"]
 	path = vendor/gatk
 	url = https://github.com/broadgsa/gatk
+[submodule "vendor/scala"]
+	path = vendor/scala
+	url = https://github.com/scala/scala
+[submodule "vendor/spark"]
+	path = vendor/spark
+	url = git://github.com/mesos/spark.git

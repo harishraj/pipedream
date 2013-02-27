@@ -1,9 +1,11 @@
 Installation
 ------------
-1. Acquire the latest version of the GATK and then:
+(0. Checkout the repo.)
 
-    $ ln -s $GATK_HOME/dist/*.jar lib/
+1. git submodule update --init
 
-2. Edit Makefile to point to Spark.
+2. make compile-deps
 
-3. make pkg && make run
+3. Edit Makefile to point to your BAM and reference FASTA.
+
+4. make compile && make run
